@@ -1,19 +1,23 @@
 import streamlit as st
 import time
 import os
+import google.generativeai as genai
 from dotenv import load_dotenv
 
-# .env dosyasındaki verileri yükle
+# 1. SAYFA AYARLARI (Mutlaka en üstte olmalı)
+st.set_page_config(page_title="T.C. Anayasa AI", layout="wide", page_icon="⚖️")
+
+# 2. YAPILANDIRMA VE API BAĞLANTISI
 load_dotenv()
-
-# API Anahtarını değişkene al (Dağıtım)
-
 api_key = os.getenv("GOOGLE_API_KEY")
 
-# Sayfa Ayarları
-st.set_page_config(page_title="T.C. Anayasa AI", layout="wide")
+if api_key:
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-pro')
+else:
+    st.error("⚠️ API Key bulunamadı! Lütfen Secrets veya .env dosyasını kontrol edin.")
 
-# 1. SOL PANEL (DOKÜMAN YÜKLEME)
+# 3. SOL PANEL (SIDEBAR)
 with st.sidebar:
     st.title("📂 Dava Dosyası Yükle")
     st.info("Analiz edilecek iddianame veya kararı buraya yükleyin.")
@@ -22,49 +26,59 @@ with st.sidebar:
     if uploaded_file:
         with st.status("Doküman analiz ediliyor...", expanded=True) as status:
             st.write("Metinler ayıklanıyor...")
-            time.sleep(1) # İşlem süresi simülasyonu
+            time.sleep(1)
             st.write("Vektör veritabanına taranıyor...")
             time.sleep(1)
             status.update(label="Analiz Tamamlandı!", state="complete", expanded=False)
         st.success(f"✅ {uploaded_file.name} hazır.")
-        # BURADA: Arka plandaki RAG sistemine dosya gönderilecek.
     
     st.divider()
     st.write("🔧 Model Ayarları")
-    temp = st.slider("Yorum Esnekliği", 0.0, 1.0, 0.3)
+    # Bu değişkeni Gemini'ye gönderirken kullanabilirsin
+    temp = st.slider("Yorum Esnekliği (Temperature)", 0.0, 1.0, 0.3)
 
-# 2. ANA EKRAN (CHAT GEÇMİŞİ)
+# 4. ANA EKRAN (CHAT ARA YÜZÜ)
 st.title("⚖️ T.C. Anayasal Muhakeme Asistanı")
 
-# Mesaj geçmişini hafızada tut (Session State)
+# Mesaj geçmişini başlat (Session State)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Eski mesajları ekrana yazdır
+# Eski mesajları ekrana bas
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 3. KULLANICI GİRDİSİ VE CEVAP
+# 5. KULLANICI GİRDİSİ VE CEVAP SÜRECİ
 if prompt := st.chat_input("Hukuki sorunuzu veya vaka özetini girin..."):
     # Kullanıcı mesajını göster ve kaydet
     st.chat_message("user").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # ASİSTAN CEVABI (Simülasyon)
+    # ASİSTAN CEVABI (GERÇEK ZAMANLI)
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
         
-        # Burası Backend'den (LangChain) gelecek cevap olacak
-        # Şimdilik simüle ediyoruz:
-        simulated_response = f"Bu durum Anayasa'nın 26. maddesi kapsamında değerlendirilmelidir...\n\n**Kaynak:** AYM 2019/35 Sayılı Karar."
-        
-        # Daktilo efekti ile yazdırma
-        for chunk in simulated_response.split():
-            full_response += chunk + " "
-            time.sleep(0.05)
-            message_placeholder.markdown(full_response + "▌")
-        message_placeholder.markdown(full_response)
+        try:
+            # Gemini modelinden yanıt al
+            # Not: İstersen 'generation_config' ile slider'dan gelen 'temp' değerini buraya ekleyebilirsin
+            response = model.generate_content(prompt)
+            actual_response = response.text
+            
+            # Daktilo efekti simülasyonu
+            for chunk in actual_response.split():
+                full_response += chunk + " "
+                time.sleep(0.05)
+                message_placeholder.markdown(full_response + "▌")
+            
+            # Final cevabı göster
+            message_placeholder.markdown(full_response)
+            
+        except Exception as e:
+            error_message = f"Bir hata oluştu: {str(e)}"
+            st.error(error_message)
+            full_response = error_message
     
+    # Asistan cevabını geçmişe kaydet
     st.session_state.messages.append({"role": "assistant", "content": full_response})
