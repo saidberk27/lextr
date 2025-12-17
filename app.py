@@ -1,5 +1,14 @@
 import streamlit as st
 import time
+import os
+from dotenv import load_dotenv
+
+# .env dosyasındaki verileri yükle
+load_dotenv()
+
+# API Anahtarını değişkene al (Dağıtım)
+
+api_key = os.getenv("GOOGLE_API_KEY")
 
 # Sayfa Ayarları
 st.set_page_config(page_title="T.C. Anayasa AI", layout="wide")
