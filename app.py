@@ -4,13 +4,7 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Mevcut modelleri kontrol etme kodu
-try:
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            print(f"Kullanılabilir Model: {m.name}")
-except Exception as e:
-    print(f"Modeller listelenirken hata: {e}")
+
 
 # 1. SAYFA AYARLARI (Mutlaka en üstte olmalı)
 st.set_page_config(page_title="T.C. Anayasa AI", layout="wide", page_icon="⚖️")
@@ -25,6 +19,14 @@ if api_key:
 
     # Modeli tam kütüphane yoluyla ve v1 sürümüyle çağır
     model = genai.GenerativeModel('models/gemini-1.5-flash')
+
+# SONRA MODELLERİ LİSTELE
+st.write("Erişebildiğim Modeller:")
+try:
+    for m in genai.list_models():
+        st.code(m.name) # Modelleri direkt ekrana yazar
+except Exception as e:
+    st.error(f"Hata: {e}")
 
 
 else:
