@@ -16,7 +16,7 @@ if api_key:
     genai.configure(api_key=api_key, transport='rest')
 
     # Model ismini tam yol olarak tanımla
-    model = genai.GenerativeModel("gemini-1.0-pro")
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 
 else:
