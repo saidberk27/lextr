@@ -14,23 +14,14 @@ load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
 
 if api_key:
-   # API Yapılandırmasını v1 sürümüne ve REST protokolüne sabitle
+    # API Yapılandırması
     genai.configure(api_key=api_key, transport='rest')
-
-    # Modeli tam kütüphane yoluyla ve v1 sürümüyle çağır
-    model = genai.GenerativeModel('models/gemini-1.5-flash')
-
-# SONRA MODELLERİ LİSTELE
-st.write("Erişebildiğim Modeller:")
-try:
-    for m in genai.list_models():
-        st.code(m.name) # Modelleri direkt ekrana yazar
-except Exception as e:
-    st.error(f"Hata: {e}")
-
-
+    # Model Tanımı
+    model = genai.GenerativeModel('models/gemini-2.5-flash')
 else:
     st.error("⚠️ API Key bulunamadı! Lütfen Secrets veya .env dosyasını kontrol edin.")
+    st.stop() # API anahtarı yoksa kodun geri kalanını çalıştırmayı durdurur
+
 
 # 3. SOL PANEL (SIDEBAR)
 with st.sidebar:
