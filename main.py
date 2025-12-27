@@ -154,6 +154,7 @@ class CezaDavasi(Dava):
         """
         İddianameyi POML yapısıyla işleyerek hukuki önyargıları ayıklar.
         """
+        # --- POML Prompt Başlangıcı ---
         poml_prompt = f"""
         <poml>
             <role>Uzman Ceza Hukukçusu ve Metin Analisti</role>
@@ -174,9 +175,10 @@ class CezaDavasi(Dava):
             </output_format>
         </poml>
         """
-        # Burada LLM'e gönderip gelen JSON'u return ediyoruz
+        # --- LLM Çağrısı ---
         response = self.llm_model.invoke([HumanMessage(content=poml_prompt)])
-        # Gelen string'i dict'e çeviriyoruz (import json gerekli)
+        
+        # SADECE BURASI DÖNMELİ (Eski return'leri sil)
         return json.loads(response.content)
 
     def ifade_isleme(self) -> dict:
