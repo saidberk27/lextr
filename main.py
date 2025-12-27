@@ -5,6 +5,13 @@ from enum import Enum
 from typing import List, Optional
 from dataclasses import dataclass, field
 import json # Daha fazla bilgi icin https://docs.langchain.com/oss/python/langchain/models#json-schema
+import requests
+import os
+
+
+ANYTHING_LLM_URL = "https://n1ldug0l.rpcld.cc/api/v1/workspace/lextr/chat"  
+# RepoCloud'dan aldığımız API Key
+ANYTHING_LLM_API_KEY = "1A81V4J-NBT4BXP-GDJ1XV7-JFHZXS9"
 
 SYSTEM_PROMPT = """
 <root>
@@ -30,6 +37,30 @@ TEMPERATURE = 0.3 # Hukuki meseleler düsük temperature'de kalsa daha iyi olabi
 TIMEOUT = 30
 MAX_TOKENS = 1000
 
+def query_anything_llm(text_input):
+    
+       # AnythingLLM RAG sistemine bağlanarak emsal karar arar.
+       # Bğlantı hatası olursa sistemi çökertmez, sessizce hata mesajı döner.
+    
+        headers = {
+            "Authorization": f"Bearer {ANYTHING_LLM_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        # Sistem prompt'u RAG için biraz daha özelleştirildi
+        payload = {
+            "message": f"Aşağıdaki hukuki durumla ilgili veritabanındaki en benzer Yargıtay/AYM emsal kararlarını bul ve özetle:\n\n{text_input}",
+            "mode": "chat"
+        }
+
+        try:
+            response = requests.post(ANYTHING_LLM_URL, json=payload, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('textResponse', "Emsal karar bulunamadı.")
+            else:
+                return f"RAG Bağlantı Hatası (Kod: {response.status_code})"
+        except Exception as e:
+            return f"RAG Sunucusuna Erişilemedi: {e}"
 
 from enum import Enum
 
@@ -430,24 +461,68 @@ class CezaDavasi(Dava):
         self.aciklama = final_response[1]       
         print(self.maddi_gercek)
         print(self.aciklama)
+        
+  
     
     def karar2(self):
         """
-        RAG teknolojisiyle emsal kararlar çekilir.
-        Karar1'de verilen karar ile emsal kararlar karşılaştırılır.
-        XXX: Bu kısımda son karar dönülmelidir.
+        RAG teknolojisiyle emsal kararlar çekilir ve Nihai Karar verilir.
         """
+        print("\n>>> ADIM 4: Emsal Karar Denetimi ve Nihai Hüküm (RAG Devrede)...")
+
+        # 1. RAG Sisteminden Emsal Karar çekiyoruz
+        # Maddi gerçeği gönderiyoruz ki benzer olayları bulsun
+        print("   [INFO] AnythingLLM veritabanında emsal karar aranıyor...")
+        emsal_cevap = query_anything_llm(self.maddi_gercek)
+        
+        print(f"   [INFO] Emsal Kararlar Çekildi.")
+        
+        # 2. Nihai Sentez Prompt'u (LLM'e Son Emri Veriyoruz)
+        final_prompt = f"""
+        GÖREV: Sen LEXTR Yargıç Sistemisin. Aşağıdaki verileri kullanarak NİHAİ GEREKÇELİ KARARI ver.
+        
+        1. MADDİ GERÇEK (Olay): {self.maddi_gercek}
+        2. İLK HUKUKİ DEĞERLENDİRME: {getattr(self, 'aciklama', 'İlk karar açıklaması bulunamadı.')}
+        3. EMSAL KARARLAR (İçtihat): {emsal_cevap}
+        
+        YÖNERGE: 
+        - İlk kararı, bulunan emsal kararlarla karşılaştır (Denetim).
+        - Eğer emsal kararlar ilk kararı destekliyorsa onayla ve emsalden alıntı yap.
+        - Eğer çelişki varsa, emsal karardaki yüksek mahkeme içtihadına uyarak kararı revize et.
+        - Sonucu "TÜRK MİLLETİ ADINA" başlığıyla resmi bir hüküm fıkrası olarak yaz.
+        """
+
+        messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=final_prompt)
+        ]
+
+        print("   [INFO] Nihai karar yazılıyor...")
+        
+       
+        full_response = ""
+        try:
+            for chunk in self.llm_model.stream(messages):
+                print(chunk.content, end="", flush=True) # Ekrana canlı yazdır
+                full_response += chunk.content
+            
+            self.karar = full_response # Sonucu kaydet
+            
+        except Exception as e:
+            print(f"\n   [HATA] Nihai karar üretilirken hata oluştu: {e}")
 
 
 def main():
     print("LEXTR - Hukuk Karar Destek Sistemine Hoş Geldiniz!")
     
     # Modeli Başlat
+    
     model = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash", 
         temperature=TEMPERATURE,
         timeout=TIMEOUT,
-        max_tokens=MAX_TOKENS
+        max_tokens=MAX_TOKENS,
+        
     )
 
     try:
