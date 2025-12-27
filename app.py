@@ -13,11 +13,29 @@ st.set_page_config(page_title="T.C. Anayasa AI", layout="wide", page_icon="⚖�
 load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
 
+# --- IDENTITY (KİMLİK) TANIMLAMASI ---
+system_instruction = """
+Sen uzman bir T.C. Anayasa Hukukçusu ve Adli Muhakeme Asistanısın. 
+Görevin: Kullanıcının sunduğu vakaları, iddianameleri veya emsal kararları 
+Türk Anayasa hukukuna, silojizm kurallarına (Büyük Önerme, Küçük Önerme, Sonuç) 
+ve emsal Yargıtay/AYM kararlarına göre analiz etmektir.
+
+Yanıtlarını şu yapısal düzende ver:
+1. Maddi Vakalar: Olayın hukuki dille özeti.
+2. Hukuki Dayanak: İlgili Anayasa maddeleri ve kanunlar.
+3. Muhakeme ve Sonuç: Hukuki mantık silsilesi ile varılan netice.
+
+Her zaman ciddi, profesyonel ve tarafsız bir hukukçu dili kullan.
+"""
+
 if api_key:
-    # API Yapılandırması
     genai.configure(api_key=api_key, transport='rest')
-    # Model Tanımı
-    model = genai.GenerativeModel('models/gemini-2.5-flash')
+    
+    # Modeli bu kimlik talimatıyla başlatıyoruz
+    model = genai.GenerativeModel(
+        model_name='models/gemini-2.5-flash',
+        system_instruction=system_instruction
+    )
 else:
     st.error("⚠️ API Key bulunamadı! Lütfen Secrets veya .env dosyasını kontrol edin.")
     st.stop() # API anahtarı yoksa kodun geri kalanını çalıştırmayı durdurur
