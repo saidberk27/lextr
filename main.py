@@ -279,43 +279,58 @@ class CezaDavasi(Dava):
         print(self.maddi_gercek)
         print(self.aciklama)
 
-    def buyuk_onerme_eslestirme(self) -> list[dict]:
+    def buyuk_onerme_eslestirme(self):
         """
-        Küçük önermeler hangi yasa, mevzuat veya kararnameye uyumlu tespit edilir.
-        NOTE: Prompt'ta yasa, mevzuat veya kararname araması gerektiği söylenebilir.
-        NOTE: Bu kısım self.maddi_gercek gözetilerek yapılmalıdır.
+        Maddi gerçek (Küçük Önerme) ile Türk Ceza Mevzuatı (Büyük Önerme) arasında 
+        hukuki bağ kurar. İlgili TCK maddelerini tespit eder.
         """
-        #NOTE: Buraya dummy data yerlestirdim. Burayi doldururken silebilirsiniz.
-        self.buyuk_onerme = [
-            {
-                "id": "TCK_86_1",
-                "tur": "SUÇ_TANIMI",
-                "metin": "Kasten başkasını yaralayan kişi 1-3 yıl hapis cezası alır.",
-                
-            },
-            {
-                "id": "TCK_86_3_e",
-                "tur": "SUÇ_ARTIRIMI",
-                "metin": "Suçun silahla işlenmesi halinde ceza yarı oranında artırılır.",
+        print("Büyük önerme (Kanun tespiti) yapılıyor...")
+
+        user_prompt_content = f"""
+        <task_context>
+            <objective>Maddi Gerçeğe Uygun Türk Ceza Kanunu Maddelerini Tespit Etme</objective>
             
-            },
-            {
-                "id": "TCK_25_1",
-                "tur": "BERAAT_SEBEBI",
-                "metin": "Saldırıya karşı orantılı savunma yapan kimseye ceza verilmez (Beraat).",
-           
-            },
-            {
-                "id": "TCK_27_2",
-                "tur": "CEZASIZLIK_SEBEBI",
-                "metin": "Savunma sınırını korku, heyecan veya panik ile aşan kimseye ceza verilmez (Ceza Verilmesine Yer Yok).",
-            },
-            {
-                "id": "TCK_62",
-                "tur": "TAKDIRI_INDIRIM",
-                "metin": "Failin geçmişi, sosyal ilişkileri ve yargılama sürecindeki saygılı tutumu nedeniyle cezada 1/6 oranında indirim yapılır.",
-            }
+            <input_maddi_gercek>
+                {self.maddi_gercek}
+            </input_maddi_gercek>
+
+            <instructions>
+                1. Maddi gerçeği T.C. Mevzuatı açısından analiz et.
+                2. Eylemdeki suç tipini (Kasten Yaralama, Tehdit, Hakaret vb.) belirle.
+                3. Varsa nitelikli halleri (silahla işleme, kamu görevlisine karşı vb.) tespit et.
+                4. Varsa hukuka uygunluk nedenlerini (Meşru Müdafaa vb.) veya kusurluluğu etkileyen halleri listele.
+                5. Yanıtı mutlaka aşağıdaki JSON formatında, başka açıklama yapmadan dön.
+            </instructions>
+
+            <output_format>
+                [
+                    {{"id": "Madde No", "tur": "SUÇ_TANIMI/ARTIRIM/İNDİRİM/BERAAT", "metin": "Madde içeriği", "neden": "Neden bu madde seçildi?"}}
+                ]
+            </output_format>
+        </task_context>
+        """
+
+        messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=user_prompt_content)
         ]
+
+        # Yapılandırılmış çıktı almak için JSON formatını zorluyoruz
+        response = self.llm_model.invoke(messages)
+        
+        # Basit bir parsing (Gelişmiş versiyonda with_structured_output önerilir)
+        try:
+            import json
+            # LLM bazen ```json ... ``` içinde dönebilir, temizliyoruz
+            cleaned_content = response.content.replace("```json", "").replace("```", "").strip()
+            self.buyuk_onerme = json.loads(cleaned_content)
+        except Exception as e:
+            print(f"Büyük önerme parse hatası: {e}")
+            # Hata durumunda boş liste veya fallback mekanizması
+            self.buyuk_onerme = []
+
+        for madde in self.buyuk_onerme:
+            print(f"Tespit Edilen Dayanak: {madde.get('id')} - {madde.get('tur')}")
 
         
 
@@ -468,3 +483,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
