@@ -3,7 +3,47 @@ import time
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
+from main import CezaDavasi, HukukDavasi
+from datetime import date 
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
+# Örnek vakaları listeleme fonksiyonu
+def get_example_cases(folder_path="Example Cases"):
+    """Klasördeki .md dosyalarını listeler."""
+    if not os.path.exists(folder_path):
+        return []
+    return [f for f in os.listdir(folder_path) if f.endswith('.md')]
+
+def read_case_content(file_path):
+    """Markdown dosyasının içeriğini okur."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read()
+    
+# Örnek vakalar için sidebar arayüzü
+with st.sidebar:
+    st.divider()
+    st.subheader("📝 Örnek Vakalar (.md)")
+    
+    example_files = get_example_cases()
+    
+    if example_files:
+        selected_case_file = st.selectbox("Bir vaka seçin:", ["Seçiniz..."] + example_files)
+        
+        if selected_case_file != "Seçiniz...":
+            case_path = os.path.join("Example Cases", selected_case_file)
+            case_content = read_case_content(case_path)
+            
+            # Seçilen vakayı küçük bir pencerede önizle
+            with st.expander("Vaka İçeriğini Gör"):
+                st.markdown(case_content)
+            
+            if st.button("⚖️ Bu Vakayı Analiz Et"):
+                # Seçilen vakayı chat input'a veya işleme gönder
+                st.session_state.selected_vaka = case_content
+                st.success("Vaka analiz için yüklendi!")
+    else:
+        st.info("Henüz .md dosyası bulunamadı. 'git pull' yaptınız mı?")
 
 
 # 1. SAYFA AYARLARI (Mutlaka en üstte olmalı)
@@ -29,16 +69,17 @@ Her zaman ciddi, profesyonel ve tarafsız bir hukukçu dili kullan.
 """
 
 if api_key:
+    # Google AI SDK yapılandırması 
     genai.configure(api_key=api_key, transport='rest')
     
-    # Modeli bu kimlik talimatıyla başlatıyoruz
-    model = genai.GenerativeModel(
-        model_name='models/gemini-2.5-flash',
-        system_instruction=system_instruction
+    # main.py'nin beklediği LangChain tabanlı model tanımlaması
+    model = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=api_key,
+        temperature=0.3 # Hukuki muhakeme için düşük tutuyoruz
     )
 else:
-    st.error("⚠️ API Key bulunamadı! Lütfen Secrets veya .env dosyasını kontrol edin.")
-    st.stop() # API anahtarı yoksa kodun geri kalanını çalıştırmayı durdurur
+    st.error("API Key eksik!")
 
 
 # 3. SOL PANEL (SIDEBAR)
@@ -72,38 +113,46 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+    
+
+    
 
 # 5. KULLANICI GİRDİSİ VE CEVAP SÜRECİ
 if prompt := st.chat_input("Hukuki sorunuzu veya vaka özetini girin..."):
-    # Kullanıcı mesajını göster ve kaydet
     st.chat_message("user").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # ASİSTAN CEVABI (GERÇEK ZAMANLI)
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        
-        try:
-            # Gemini modelinden yanıt al
-            # Not: İstersen 'generation_config' ile slider'dan gelen 'temp' değerini buraya ekleyebilirsin
-            response = model.generate_content(prompt)
-            actual_response = response.text
-            
-            # Daktilo efekti simülasyonu
-            for chunk in actual_response.split():
-                full_response += chunk + " "
-                time.sleep(0.05)
-                message_placeholder.markdown(full_response + "▌")
-            
-            # Final cevabı göster
-            message_placeholder.markdown(full_response)
-            
-        except Exception as e:
-            error_message = f"Bir hata oluştu: {str(e)}"
-            st.error(error_message)
-            full_response = error_message
-    
-    # Asistan cevabını geçmişe kaydet
+        with st.spinner("Hukuki silojizm süreci işletiliyor..."):
+            try:
+                # main.py içindeki CezaDavasi sınıfını tetikliyoruz
+                dava_analizi = CezaDavasi(
+                    hakim="Lextr AI",
+                    savci="Cumhuriyet Savcısı",
+                    davali="Analiz Edilen Şahıs",
+                    davaci="K.H.",
+                    tarih=date.today(),
+                    mahkeme="Anayasal Muhakeme Birimi",
+                    karar="",
+                    llm_model=model, # Senin daha önce tanımladığın model
+                    iddianame=prompt, # Kullanıcının yazdığı metni iddianame gibi kabul ediyoruz
+                    ifade="İfade verisi bekleniyor...",
+                    maddi_gercek="",
+                    buyuk_onerme="",
+                    rapor=""
+                )
+
+                # Sonuçları ekrana basıyoruz
+                full_response = f"""
+### ⚖️ Analiz Sonucu
+**Maddi Gerçek:** {dava_analizi.maddi_gercek}
+
+**Hukuki Gerekçe:** {dava_analizi.aciklama}
+                """
+                st.markdown(full_response)
+                
+            except Exception as e:
+                st.error(f"Analiz sırasında bir hata oluştu: {e}")
+                full_response = "Hata nedeniyle analiz tamamlanamadı."
+
     st.session_state.messages.append({"role": "assistant", "content": full_response})
-    # Kullanılabilir modelleri listelemek için bu kodu geçici olarak ekle
