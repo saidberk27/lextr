@@ -181,36 +181,76 @@ class CezaDavasi(Dava):
         self.karar1()
         self.karar2()
 
+    def _json_temizle(self, metin: str) -> dict:
+        """Yardımcı Fonksiyon: Gemini çıktısını temizleyip JSON'a çevirir."""
+        try:
+            # Markdown bloklarını temizle (```json ... ```)
+            temiz_metin = metin.strip()
+            if "```json" in temiz_metin:
+                temiz_metin = temiz_metin.split("```json")[1].split("```")[0]
+            elif "```" in temiz_metin:
+                temiz_metin = temiz_metin.split("```")[1].split("```")[0]
+            
+            return json.loads(temiz_metin.strip())
+        except Exception as e:
+            print(f"JSON Ayrıştırma Hatası: {e}")
+            # Hata olursa boş bir yapı döndür ki sistem çökmesin
+            return {"olay": metin, "onyargi": "Analiz edilemedi"}
+
     def iddianame_isleme(self) -> dict:
         """
-        İddianame işlenir. İddianameden "Küçük Önerme" Ayıklanmaya Çalışır
-        İddianame Önyargılı "Küçük Önerme" olduğu not edilir.
-        NOTE: İddianamedeki önyargılar return edilmelidir. Hibrit Dilekçe
-        kısmında kullanılacaktır.
+        İddianameyi POML yapısıyla işleyerek hukuki önyargıları ayıklar.
         """
-
-        #Dummy Data
-        iddianame_data = {
-            "olay": "Şüpheli Burak Demir, 01.01.2024 tarihinde gürültü nedeniyle tartıştığı müşteki Kerem Sönmez'i, üzerinde taşıdığı ve saldırı amacıyla hazır bulundurduğu bıçakla karın boşluğundan bir kez yaralamıştır. Müştekinin hayati tehlikesi mevcuttur. Şüpheli, müştekinin silahsız olmasına rağmen doğrudan hayati bölgeyi hedef alarak kasten öldürmeye teşebbüs etmiştir.",
-            
-            "onyargi": "Metin, şüphelinin eylemini doğrudan 'saldırı amaçlı' olarak nitelendirmekte ve meşru müdafaa ihtimalini dışlamaktadır. 'Saldırı amacıyla hazır bulundurduğu' ifadesiyle önceden tasarlama iması yapılmakta, müştekinin alkollü olması ve ilk saldırıyı başlatması gibi hafifletici unsurlar göz ardı edilerek şüphelinin suçluluğu peşinen kabul edilmektedir."
-        }
-
-        return iddianame_data
+        poml_prompt = f"""
+        <poml>
+            <role>Uzman Ceza Hukukçusu ve Metin Analisti</role>
+            <task>İddianame metnini analiz ederek maddi vakıalar ile sübjektif önyargıları birbirinden ayır.</task>
+            <input_data>
+                <narrative>{self.iddianame}</narrative>
+            </input_data>
+            <instructions>
+                1. Metindeki 'vahşice', 'sinsi', 'canice' gibi sıfatları 'onyargi' etiketine al.
+                2. Sadece fiziksel eylemleri (kim, neyi, nerede, nasıl yaptı) 'olay' etiketine al.
+                3. Çıktıyı SADECE JSON formatında ver, başka açıklama yapma.
+            </instructions>
+            <output_format>
+                {{
+                    "olay": "Temizlenmiş maddi gerçek metni",
+                    "onyargi": "Tespit edilen taraflı ifadeler"
+                }}
+            </output_format>
+        </poml>
+        """
+        response = self.llm_model.invoke([HumanMessage(content=poml_prompt)])
+        return self._json_temizle(response.content)
 
     def ifade_isleme(self) -> dict:
         """
-        İfade İşlenir. Cevap Dilekçesinden "Küçük Önerme" Ayıklanmaya Çalışır
-        İfade Önyargılı "Küçük Önerme" olduğu not edilir.
+        Savunma ifadesini POML yapısıyla işleyerek maddi vakıaları izole eder.
         """
-        #Dummy Data
-        ifade_data = {
-            "olay": "Olay günü müşteki Kerem Sönmez, aşırı alkollü bir şekilde kapımı tekmeleyerek içeri girmeye çalışmıştır. Kapıyı açtığımda boğazıma sarılarak beni nefessiz bırakmış ve öldürmekle tehdit etmiştir. Fiziksel olarak benden çok daha iri olan müştekinin elinden kurtulmak ve canımı korumak amacıyla, panik halinde elime geçen meyve çakısını rastgele savurdum. Öldürme kastım yoktu, eylem tamamen meşru müdafaa sınırları içindedir.",
-            
-            "onyargi": "Metin, olaydaki şiddet sorumluluğunu tamamen karşı tarafa (müştekiye) yükleme eğilimindedir. 'Aşırı alkollü', 'boğazıma sarıldı', 'nefessiz bıraktı' gibi ifadelerle mağduriyet vurgulanırken, bıçaklama eylemi 'rastgele savurmak' şeklinde yumuşatılmıştır. Şüpheli, kendini çaresiz bir kurban, müştekiyi ise kontrolsüz bir saldırgan olarak çerçevelemektedir."
-        }
-
-        return ifade_data
+        poml_prompt = f"""
+        <poml>
+            <role>Adli Psikoloji ve Ceza Hukuku Uzmanı</role>
+            <task>Şüpheli ifadesindeki savunma stratejilerini ve maddi gerçekleri analiz et.</task>
+            <input_data>
+                <narrative>{self.ifade}</narrative>
+            </input_data>
+            <instructions>
+                1. 'Mecbur kaldım', 'hak etti', 'istemeden oldu' gibi niyet beyanlarını 'onyargi' kısmına al.
+                2. Failin kabul ettiği fiziksel temas ve eylemleri 'olay' kısmına al.
+                3. Çıktıyı SADECE JSON formatında ver, başka açıklama yapma.
+            </instructions>
+            <output_format>
+                {{
+                    "olay": "Şüphelinin kabul ettiği maddi vakıalar",
+                    "onyargi": "Savunma odaklı sübjektif anlatımlar"
+                }}
+            </output_format>
+        </poml>
+        """
+        response = self.llm_model.invoke([HumanMessage(content=poml_prompt)])
+        return self._json_temizle(response.content)
+    
 
     def hibrit_dilekce_isleme(self):
         """
