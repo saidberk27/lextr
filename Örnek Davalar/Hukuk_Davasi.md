@@ -71,3 +71,7 @@ SONUÇ VE İSTEM: Haksız ve mesnetsiz açılan davanın reddine, yargılama gid
 Hukuki Çıkarım: "İş sözleşmesinde fazla mesainin ücrete dahil olması (D-02), WhatsApp kayıtlarındaki (D-05) talimatlar ve yıllık 270 saat sınırı göz önüne alındığında davacının fazla mesai talep hakkını ortadan kaldırır mı?" (Burada AI'ın "Yıllık 270 saati aşan kısım her halükarda ödenmelidir" kuralını bilip bilmediğini test edersin).
 
 Varlık Çıkarımı (Entity Extraction): "Dava konusu olaydaki işe giriş tarihi, çıkış tarihi ve fesih kodunu (SGK kodu) çıkar."
+
+
+
+

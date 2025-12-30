@@ -1,13 +1,18 @@
+import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from datetime import date
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 from dataclasses import dataclass, field
+from dotenv import load_dotenv
 import json # Daha fazla bilgi icin https://docs.langchain.com/oss/python/langchain/models#json-schema
 import requests
-import os
 
+# Streamlit için özel Log Handler
+# Logging yapılandırması
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 ANYTHING_LLM_URL = "https://n1ldug0l.rpcld.cc/api/v1/workspace/lextr/chat"  
 # RepoCloud'dan aldığımız API Key
@@ -37,6 +42,31 @@ TEMPERATURE = 0.3 # Hukuki meseleler düsük temperature'de kalsa daha iyi olabi
 TIMEOUT = 30
 MAX_TOKENS = 1000
 
+class StreamlitLogHandler(logging.Handler):
+    def __init__(self, placeholder):
+        super().__init__()
+        self.placeholder = placeholder
+        self.log_buffer = ""
+
+    def emit(self, record):
+        msg = self.format(record)
+        self.log_buffer += msg + "\n"
+        self.placeholder.code(self.log_buffer)
+
+
+def setup_streamlit_logging(st_placeholder):
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    #Eski handler'lari temizle.
+    logger.handlers = [h for h in logger.handlers if not isinstance(h, StreamlitLogHandler)]
+    
+    #Yeni handler ekle
+    handler = StreamlitLogHandler(st_placeholder)
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%H:%M:%S'))
+    logger.addHandler(handler)
+    return logger
+
 def query_anything_llm(text_input):
     
        # AnythingLLM RAG sistemine bağlanarak emsal karar arar.
@@ -62,7 +92,7 @@ def query_anything_llm(text_input):
         except Exception as e:
             return f"RAG Sunucusuna Erişilemedi: {e}"
 
-from enum import Enum
+
 
 class KararTipi(Enum):
     # Hukuk Mahkemeleri Kararları
@@ -98,65 +128,8 @@ class Dava:
     karar : str
     llm_model : ChatGoogleGenerativeAI
 
-
 @dataclass(kw_only=True)
-class HukukDavasi(Dava):
-    """
-    1 - Dava dilekçesi ve cevap dilekçesi işlenir
-    2 - Önyargılar çıkartılır
-    3 - Dilekçeler önyargılar değerlendirilerek birlikte işlenir.
-    4 - Kağıtlara göre kararlar verilir
-    5 - Emsal kararlarla karşılaştırılır.
-    6 - Nihai karar verilir.
-    """
-
-    dava_dilekcesi : str
-    cevap_dilekcesi : str
-    sekli_gercek : str # Dosyada ne varsa o
-    deliller: List[str] = field(default_factory=list)
-
-    def dava_dilekcesi_isleme(self) -> dict:
-        """
-        Dava Dilekçesi İşlenir. Dava Dilekçesinden "Küçük Önerme" Ayıklanmaya Çalışır
-        Davacı Önyargılı "Küçük Önerme" olduğu not edilir.
-        """
-        
-    def cevap_dilekcesi_isleme(self) -> dict:
-        """
-        Cevap Dilekçesi İşlenir. Cevap Dilekçesinden "Küçük Önerme" Ayıklanmaya Çalışır
-        Davalı Önyargılı "Küçük Önerme" olduğu not edilir.
-        """
-
-    def hibrit_dilekce_isleme(self):
-        """
-        İki dilekçe (Çatışma Dilekçeleri) işlenir.
-        Önyargılar işleme algoritmasına eklenir.
-        Şekli gerçek bulunur.
-        NOTE: sekli_gercek değişkeni bu metotta doldurulmalıdır.
-        """
-    
-    def buyuk_onerme_eslestirme(self):
-        """
-        Küçük önermeler hangi yasa, mevzuat veya kararnameye uyumlu tespit edilir.
-        NOTE: Prompt'ta yasa, mevzuat veya kararname araması gerektiği söylenebilir.
-        """
-    
-    def karar1(self):
-        """
-        Hibrit dilekçe işleminden sonra karara varılır.
-        XXX: Buyuk Önerme + Küçük Önerme = Karar Mekanizmasına Uyulmalıdır.        
-        Maddi gerçek göz önünde bulundurulur.
-        """
-    
-    def karar2(self):
-        """
-        RAG teknolojisiyle emsal kararlar çekilir.
-        Karar1'de verilen karar ile emsal kararlar karşılaştırılır.
-        XXX: Bu kısımda son karar dönülmelidir.
-        """
-
-@dataclass(kw_only=True)
-class CezaDavasi(Dava):
+class KullaniciDavasi(Dava):
     """
     1 - İddianeme ve ifade işlenir
     2 - Önyargılar çıkartılır
@@ -166,17 +139,17 @@ class CezaDavasi(Dava):
     6 - Nihai karar verilir
     """
 
-    iddianame : str
-    ifade: str
-    maddi_gercek: str # Ne olduysa o
+    dilekce1 : str #İddianame (Ceza) veya dava dilekçesi olabilir (Hukuk)
+    dilekce2: str #İfade (Ceza) veya cevap dilekçesi olabilir (Hukuk)
+    kucuk_onerme: str # Maddi Gerçek (Ceza) veya Sekli Gerçek (Hukuk) olabilir.
     buyuk_onerme : str
     rapor : str
 
     def __post_init__(self):
         """Düşünce Zinciri Burada Başlatılır."""
-        print(f"Sistem Başlatıldı: {self.mahkeme} için dosya hazırlanıyor...")
+        logger.info(f"Sistem Başlatıldı: {self.mahkeme} için dosya hazırlanıyor...")
 
-        self.hibrit_dilekce_isleme()#İddianame ve ifade iceride islenecek.
+        self.hibrit_dilekce_isleme() #İddianame ve ifade iceride islenecek.
         self.buyuk_onerme_eslestirme()
         self.karar1()
         self.karar2()
@@ -193,11 +166,11 @@ class CezaDavasi(Dava):
             
             return json.loads(temiz_metin.strip())
         except Exception as e:
-            print(f"JSON Ayrıştırma Hatası: {e}")
+            logger.error(f"JSON Ayrıştırma Hatası: {e}")
             # Hata olursa boş bir yapı döndür ki sistem çökmesin
             return {"olay": metin, "onyargi": "Analiz edilemedi"}
 
-    def iddianame_isleme(self) -> dict:
+    def dilekce1_isleme(self) -> dict:
         """
         İddianameyi POML yapısıyla işleyerek hukuki önyargıları ayıklar.
         """
@@ -206,7 +179,7 @@ class CezaDavasi(Dava):
             <role>Uzman Ceza Hukukçusu ve Metin Analisti</role>
             <task>İddianame metnini analiz ederek maddi vakıalar ile sübjektif önyargıları birbirinden ayır.</task>
             <input_data>
-                <narrative>{self.iddianame}</narrative>
+                <narrative>{self.dilekce1}</narrative>
             </input_data>
             <instructions>
                 1. Metindeki 'vahşice', 'sinsi', 'canice' gibi sıfatları 'onyargi' etiketine al.
@@ -224,7 +197,7 @@ class CezaDavasi(Dava):
         response = self.llm_model.invoke([HumanMessage(content=poml_prompt)])
         return self._json_temizle(response.content)
 
-    def ifade_isleme(self) -> dict:
+    def dilekce2_isleme(self) -> dict:
         """
         Savunma ifadesini POML yapısıyla işleyerek maddi vakıaları izole eder.
         """
@@ -233,7 +206,7 @@ class CezaDavasi(Dava):
             <role>Adli Psikoloji ve Ceza Hukuku Uzmanı</role>
             <task>Şüpheli ifadesindeki savunma stratejilerini ve maddi gerçekleri analiz et.</task>
             <input_data>
-                <narrative>{self.ifade}</narrative>
+                <narrative>{self.dilekce2}</narrative>
             </input_data>
             <instructions>
                 1. 'Mecbur kaldım', 'hak etti', 'istemeden oldu' gibi niyet beyanlarını 'onyargi' kısmına al.
@@ -251,7 +224,6 @@ class CezaDavasi(Dava):
         response = self.llm_model.invoke([HumanMessage(content=poml_prompt)])
         return self._json_temizle(response.content)
     
-
     def hibrit_dilekce_isleme(self):
         """
         İki dilekçe (Çatışma Dilekçeleri) işlenir.
@@ -259,10 +231,10 @@ class CezaDavasi(Dava):
         Maddi gerçek bulunur.
         NOTE: maddi_gercek değişkeni bu metotta doldurulmalıdır.
         """
-        print("Hibrit dilekçe işleniyor...")
+        logger.info("Hibrit dilekçe işleniyor...")
 
-        iddianame_sonuc = self.iddianame_isleme()
-        ifade_sonuc = self.ifade_isleme()
+        iddianame_sonuc = self.dilekce1_isleme()
+        ifade_sonuc = self.dilekce2_isleme()
         iddianame_olay_metni = iddianame_sonuc.get("olay")
         ifade_olay_metni = ifade_sonuc.get("olay")
 
@@ -341,28 +313,27 @@ class CezaDavasi(Dava):
 
         full_response = ""
         for chunk in self.llm_model.stream(messages):
-            #print(chunk.content, end="", flush=True)
             full_response += chunk.content
 
         final_response = full_response.split("***")
-        self.maddi_gercek = final_response[0]
+        self.kucuk_onerme = final_response[0]
         self.aciklama = final_response[1]       
-        print(self.maddi_gercek)
-        print(self.aciklama)
+        logger.info(self.kucuk_onerme)
+        logger.info(self.aciklama)
 
     def buyuk_onerme_eslestirme(self):
         """
         Maddi gerçek (Küçük Önerme) ile Türk Ceza Mevzuatı (Büyük Önerme) arasında 
         hukuki bağ kurar. İlgili TCK maddelerini tespit eder.
         """
-        print("Büyük önerme (Kanun tespiti) yapılıyor...")
+        logger.info("Büyük önerme (Kanun tespiti) yapılıyor...")
 
         user_prompt_content = f"""
         <task_context>
             <objective>Maddi Gerçeğe Uygun Türk Ceza Kanunu Maddelerini Tespit Etme</objective>
             
             <input_maddi_gercek>
-                {self.maddi_gercek}
+                {self.kucuk_onerme}
             </input_maddi_gercek>
 
             <instructions>
@@ -396,23 +367,21 @@ class CezaDavasi(Dava):
             cleaned_content = response.content.replace("```json", "").replace("```", "").strip()
             self.buyuk_onerme = json.loads(cleaned_content)
         except Exception as e:
-            print(f"Büyük önerme parse hatası: {e}")
+            logger.error(f"Büyük önerme parse hatası: {e}")
             # Hata durumunda boş liste veya fallback mekanizması
             self.buyuk_onerme = []
 
         for madde in self.buyuk_onerme:
-            print(f"Tespit Edilen Dayanak: {madde.get('id')} - {madde.get('tur')}")
-
-        
+            logger.info(f"Tespit Edilen Dayanak: {madde.get('id')} - {madde.get('tur')}")
 
     def karar1(self):
         """
         Hibrit dilekçe işleminden sonra karara varılır.
         Şekli gerçek göz önünde bulundurulur.
-        XXX: Buyuk Önerme + Küçük Önerme = Karar Mekanizmasına Uyulmalıdır.        
+        XXX: Buyuk Önerme + Küçük Önerme = Karar Mekanizmasına Uyulmalıdır.         
 
         """
-        print("Karar1 Veriliyor.")
+        logger.info("Karar1 Veriliyor.")
 
         user_prompt_content = f"""
         <task_context>
@@ -469,7 +438,7 @@ class CezaDavasi(Dava):
 
             <inputs>
                     <input name="minor_premise">
-                        {self.maddi_gercek}
+                        {self.kucuk_onerme}
                     </input>
                     <input name="major_premises">
                         {self.buyuk_onerme}
@@ -493,14 +462,13 @@ class CezaDavasi(Dava):
 
         full_response = ""
         for chunk in self.llm_model.stream(messages):
-            #print(chunk.content, end="", flush=True)
             full_response += chunk.content
-
+        
         final_response = full_response.split("***")
-        self.maddi_gercek = final_response[0]
+        self.kucuk_onerme = final_response[0]
         self.aciklama = final_response[1]       
-        print(self.maddi_gercek)
-        print(self.aciklama)
+        logger.info(self.kucuk_onerme)
+        logger.info(self.aciklama)
         
   
     
@@ -508,28 +476,69 @@ class CezaDavasi(Dava):
         """
         RAG teknolojisiyle emsal kararlar çekilir ve Nihai Karar verilir.
         """
-        print("\n>>> ADIM 4: Emsal Karar Denetimi ve Nihai Hüküm (RAG Devrede)...")
+        logger.info("\n>>> ADIM 4: Emsal Karar Denetimi ve Nihai Hüküm (RAG Devrede)...")
 
         # 1. RAG Sisteminden Emsal Karar çekiyoruz
         # Maddi gerçeği gönderiyoruz ki benzer olayları bulsun
-        print("   [INFO] AnythingLLM veritabanında emsal karar aranıyor...")
-        emsal_cevap = query_anything_llm(self.maddi_gercek)
+        logger.info("   [INFO] AnythingLLM veritabanında emsal karar aranıyor...")
+        emsal_cevap = query_anything_llm(self.kucuk_onerme)
         
-        print(f"   [INFO] Emsal Kararlar Çekildi.")
+        logger.info(f"   [INFO] Emsal Kararlar Çekildi.")
         
         # 2. Nihai Sentez Prompt'u (LLM'e Son Emri Veriyoruz)
         final_prompt = f"""
-        GÖREV: Sen LEXTR Yargıç Sistemisin. Aşağıdaki verileri kullanarak NİHAİ GEREKÇELİ KARARI ver.
-        
-        1. MADDİ GERÇEK (Olay): {self.maddi_gercek}
-        2. İLK HUKUKİ DEĞERLENDİRME: {getattr(self, 'aciklama', 'İlk karar açıklaması bulunamadı.')}
-        3. EMSAL KARARLAR (İçtihat): {emsal_cevap}
-        
-        YÖNERGE: 
-        - İlk kararı, bulunan emsal kararlarla karşılaştır (Denetim).
-        - Eğer emsal kararlar ilk kararı destekliyorsa onayla ve emsalden alıntı yap.
-        - Eğer çelişki varsa, emsal karardaki yüksek mahkeme içtihadına uyarak kararı revize et.
-        - Sonucu "TÜRK MİLLETİ ADINA" başlığıyla resmi bir hüküm fıkrası olarak yaz.
+        <task_context>
+            <objective>
+                LEXTR Yargıç Sistemi olarak; maddi gerçeği, ilk hukuki değerlendirmeyi ve emsal kararları (içtihat) 
+                karşılaştırarak tarafsız, denetlenebilir ve hukuka uygun NİHAİ GEREKÇELİ KARARI oluşturmak.
+            </objective>
+
+            <guidelines>
+                <step>İlk kararı, sunulan emsal kararlarla (içtihat) yüksek mahkeme denetimi mantığıyla karşılaştır.</step>
+                <step>Emsal kararlar ilk kararı destekliyorsa, emsalden spesifik alıntılar yaparak kararı onayla.</step>
+                <step>Emsal kararlar ile ilk karar arasında çelişki varsa, yüksek mahkeme içtihadını üstün tutarak kararı revize et.</step>
+                <step>Cezayı belirle ve mutlaka belirt</step>
+                <step>Hüküm fıkrasını mutlaka "TÜRK MİLLETİ ADINA" başlığıyla resmi bir dille yaz.</step>
+            </guidelines>
+
+            <inputs>
+                <input name="maddi_gercek">
+                    {self.kucuk_onerme}
+                </input>
+                <input name="ilk_hukuki_degerlendirme">
+                    {getattr(self, 'aciklama', 'İlk karar açıklaması bulunamadı.')}
+                </input>
+                <input name="emsal_kararlar">
+                    {emsal_cevap}
+                </input>
+            </inputs>
+
+            <output_format>
+                <structure>
+                    TÜRK MİLLETİ ADINA
+                    [Resmi Hüküm Fıkrası]
+                    ***
+                    [Gerekçeli Karar: Maddi gerçek, ilk değerlendirme ve emsal kararların analitik karşılaştırması]
+                </structure>
+                <delimiter>***</delimiter>
+            </output_format>
+
+            <examples>
+                <example>
+                    <input_data>
+                        <maddi_gercek>İşçinin haklı neden olmaksızın iş akdi feshedilmiştir.</maddi_gercek>
+                        <ilk_hukuki_degerlendirme>Kıdem tazminatı ödenmelidir.</ilk_hukuki_degerlendirme>
+                        <emsal_kararlar>Yargıtay 9. HD: Belirsiz süreli iş sözleşmelerinde haksız fesihte kıdem tazminatı esastır.</emsal_kararlar>
+                    </input_data>
+                    <output>
+                        TÜRK MİLLETİ ADINA
+                        Davacı işçinin kıdem tazminatı talebinin KABULÜNE karar verilmiştir.
+                        ***
+                        Maddi gerçekte feshin haksız olduğu sabittir. İlk değerlendirme, sunulan Yargıtay 9. HD emsal kararıyla tam uyumludur. Emsal karardaki "haksız fesihte tazminat esastır" ilkesi gereği hüküm onanmıştır.
+                    </output>
+                </example>
+            </examples>
+        </task_context>
         """
 
         messages = [
@@ -537,44 +546,39 @@ class CezaDavasi(Dava):
             HumanMessage(content=final_prompt)
         ]
 
-        print("   [INFO] Nihai karar yazılıyor...")
+        logger.info("[INFO] Nihai karar yazılıyor...")
         
        
         full_response = ""
         try:
             for chunk in self.llm_model.stream(messages):
-                print(chunk.content, end="", flush=True) # Ekrana canlı yazdır
+                # Streaming çıktıları genellikle doğrudan terminale basılır, loglama için biriktirilir.
+                print(chunk.content, end="", flush=True) 
                 full_response += chunk.content
             
             self.karar = full_response # Sonucu kaydet
             
         except Exception as e:
-            print(f"\n   [HATA] Nihai karar üretilirken hata oluştu: {e}")
+            logger.error(f"\n   [HATA] Nihai karar üretilirken hata oluştu: {e}")
 
 
 def main():
-    print("LEXTR - Hukuk Karar Destek Sistemine Hoş Geldiniz!")
-    
-    # Modeli Başlat
-    
-    model = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash", 
-        temperature=TEMPERATURE,
-        timeout=TIMEOUT,
-        max_tokens=MAX_TOKENS,
-        
-    )
+    logger.info("LEXTR - Hukuk Karar Destek Sistemine Hoş Geldiniz!")
 
+    try:    
+        model = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash", 
+            temperature=TEMPERATURE,
+            timeout=TIMEOUT,
+            max_tokens=MAX_TOKENS,
+            
+        )
+        load_dotenv()
+    except Exception as e:
+        logger.error(f"Model Başlatılamadı {e}")
+    
     try:
-        secim = int(input("1) Hukuk Davası \n2) Ceza Davası\nSeçiminiz: "))
-    except ValueError:
-        print("Lütfen sayı giriniz.")
-        return
-
-    if secim == 2:
-        # CEZA DAVASI OLUŞTURMA (Instantiation)
-        # Class @dataclass olduğu için __init__ otomatik oluşur ama tüm fieldları vermemiz gerekir.
-        ceza_davasi = CezaDavasi(
+        ceza_davasi = KullaniciDavasi(
             hakim="Yapay Zeka Hakim",
             savci="Cumhuriyet Savcısı",
             davali="Burak Demir",  # Sanık
@@ -583,19 +587,14 @@ def main():
             mahkeme="Asliye Ceza Mahkemesi",
             karar="",             # Henüz boş
             llm_model=model,      # Modeli class içine paslıyoruz
-            iddianame="Ham veri...", # Gerçek senaryoda dosya okuma vs. olur
+            dilekce1="Ham veri...", # Gerçek senaryoda dosya okuma vs. olur
             ifade="Ham veri...",
-            maddi_gercek="",
+            kucuk_onerme="", # dataclass gereği başlatılmalı
             buyuk_onerme="",
             rapor=""
         )
-    
-
-    elif secim == 1:
-        print("Hukuk davası henüz implemente edilmedi.")
-    
-
+    except Exception as e:
+        logger.error(f"Dava Başlatılamadı {e}")
 
 if __name__ == "__main__":
     main()
-
